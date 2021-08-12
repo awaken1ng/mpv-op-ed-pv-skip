@@ -119,6 +119,16 @@ local function seek_to_next_or_prev_chapter(chapter_index)
     else
         -- to next or previous chapter
         mp.set_property("chapter", to_chapter)
+
+        -- if last chapter starts beyond the end of the file, playback will get stuck when switched to the next file
+        next_chapter_start = mp.get_property("chapter-list/" .. to_chapter + 1 .. "/time")
+        if next_chapter_start == nil then
+            chapter_start = mp.get_property("chapter-list/" .. to_chapter .. "/time")
+            file_duration = mp.get_property("duration")
+            if chapter_start > file_duration then
+                mp.command("playlist-next")
+            end
+        end
     end
 end
 
