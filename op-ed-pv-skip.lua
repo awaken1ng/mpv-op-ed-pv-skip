@@ -25,6 +25,9 @@ local ENABLED = true
 local PREV_CHAPTER = nil
 local CURRENT_MODE = MODE_CHAPTER_NAME
 
+local function starts_with(str, start)
+    return str:sub(1, #start) == start
+end
 
 local function is_op_ed_pv(chapter_index)
     title = mp.get_property("chapter-list/" .. chapter_index .. "/title"):lower()
@@ -33,10 +36,6 @@ local function is_op_ed_pv(chapter_index)
         if pattern == title then
             return true
         end
-    end
-
-    local function starts_with(str, start)
-        return str:sub(1, #start) == start
     end
 
     for _, pattern in ipairs(PATTERNS_START) do
@@ -131,6 +130,16 @@ local function seek_to_next_or_prev_chapter(chapter_index)
     end
 end
 
+local function mode_cycle()
+    if CURRENT_MODE == MODE_CHAPTER_NAME then
+        CURRENT_MODE = MODE_CHAPTER_LENGTH
+    elseif CURRENT_MODE == MODE_CHAPTER_LENGTH then
+        CURRENT_MODE = MODE_CHAPTER_NAME
+    end
+
+    mp.osd_message("OP/ED/PV skip: " .. CURRENT_MODE)
+end
+
 mp.add_key_binding(KEYBIND, "op-ed-pv-skip-toggle", function()
     msg = "OP/ED/PV skip: "
     if ENABLED then
@@ -149,13 +158,34 @@ mp.add_key_binding(string.upper(KEYBIND), "op-ed-pv-skip-mode-cycle", function (
         return
     end
 
-    if CURRENT_MODE == MODE_CHAPTER_NAME then
-        CURRENT_MODE = MODE_CHAPTER_LENGTH
-    elseif CURRENT_MODE == MODE_CHAPTER_LENGTH then
-        CURRENT_MODE = MODE_CHAPTER_NAME
+    mode_cycle()
+end)
+
+mp.observe_property("chapters", "number", function(_, chapter_count)
+    if chapter_count == nil
+    or chapter_count == 0 then
+        return
     end
 
-    mp.osd_message("OP/ED/PV skip: " .. CURRENT_MODE)
+    -- must run before `chapter` handler
+    -- otherwise, chapter skip might not happen when opening the file (and first chapter is an OP)
+
+    named_chapters = false
+    for chapter_index = 0, chapter_count - 1 do -- range is inclusive, but chapters are 0-indexed
+        title = mp.get_property("chapter-list/" .. chapter_index .. "/title")
+        if not starts_with(title, "Chapter ") then
+            named_chapters = true
+            break
+        end
+    end
+
+    if (named_chapters and CURRENT_MODE ~= MODE_CHAPTER_NAME)
+    or (not named_chapters and CURRENT_MODE ~= MODE_CHAPTER_LENGTH)
+    then
+        -- `mp.commandv("keypress", string.upper(KEYBIND))` could have been used here,
+        -- but the mode cycle seem to happen after `chapter` handler, so skip doesn't happen when opening the file
+        mode_cycle()
+    end
 end)
 
 mp.observe_property("chapter", "number", function(_, chapter_index)
