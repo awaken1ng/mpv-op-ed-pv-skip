@@ -74,8 +74,8 @@ local function seek_to_next_or_prev_chapter(chapter_index)
         end
     end
 
-    chapters = mp.get_property("chapter-list/count")
-    is_seeking = mp.get_property("seeking")
+    chapters = mp.get_property_number("chapter-list/count")
+    is_seeking = mp.get_property_bool("seeking")
 
     if not forward and is_seeking then
         -- avoid getting stuck when seeking backwards into chapter thats then immediately skipped
@@ -84,14 +84,14 @@ local function seek_to_next_or_prev_chapter(chapter_index)
         if chapter_index >= chapters - 1 then
             -- current chapter is last, use total file duration instead
             -- e.g. ../Part B/ED/Part C|, when seeking from part C over ED
-            chapter_end = mp.get_property("duration")
+            chapter_end = mp.get_property_number("duration")
         else
             -- start of the next chapter is also the end of current chapter
-            chapter_end = mp.get_property("chapter-list/" .. chapter_index + 1 .. "/time")
+            chapter_end = mp.get_property_number("chapter-list/" .. chapter_index + 1 .. "/time")
         end
 
-        chapter_start = mp.get_property("chapter-list/" .. chapter_index .. "/time")
-        current_position = mp.get_property("playback-time")
+        chapter_start = mp.get_property_number("chapter-list/" .. chapter_index .. "/time")
+        current_position = mp.get_property_number("playback-time")
 
         -- how many seconds we've seeked into the skipped chapter
         seeked_skipped = chapter_end - current_position
@@ -101,14 +101,14 @@ local function seek_to_next_or_prev_chapter(chapter_index)
         chapter_length = chapter_end - chapter_start
         if math.floor(chapter_length) == math.floor(seeked_skipped) then
             -- entire chapter was skipped, seek to the start of the previous one
-            mp.set_property("chapter", to_chapter)
+            mp.set_property_number("chapter", to_chapter)
         elseif chapter_index == 0 then
             -- if first chapter is an opening, seek into it instead
             -- don't have to do anything for that, this is the default behaviour
         else
             -- seek into the previous chapter
             seeked_previous = chapter_start - seeked_skipped
-            mp.set_property("playback-time", seeked_previous)
+            mp.set_property_number("playback-time", seeked_previous)
         end
     elseif chapter_index >= chapters - 1 then
         -- on last chapter, to next playlist item
@@ -116,16 +116,16 @@ local function seek_to_next_or_prev_chapter(chapter_index)
         -- The chapter option must be <= {last chapter}: {last chapter + 1}
         mp.command("playlist-next")
     else
-        next_chapter_start = mp.get_property("chapter-list/" .. to_chapter + 1 .. "/time")
-        chapter_start = mp.get_property("chapter-list/" .. to_chapter .. "/time")
-        file_duration = mp.get_property("duration")
+        next_chapter_start = mp.get_property_number("chapter-list/" .. to_chapter + 1 .. "/time")
+        chapter_start = mp.get_property_number("chapter-list/" .. to_chapter .. "/time")
+        file_duration = mp.get_property_number("duration")
 
         if next_chapter_start == nil and chapter_start > file_duration then
             -- if last chapter starts beyond the end of the file, playback will get stuck when switched to the next file
             mp.command("playlist-next")
         else
             -- to next or previous chapter
-            mp.set_property("chapter", to_chapter)
+            mp.set_property_number("chapter", to_chapter)
         end
     end
 end
@@ -203,15 +203,15 @@ mp.observe_property("chapter", "number", function(_, chapter_index)
         end
     elseif CURRENT_MODE == MODE_CHAPTER_LENGTH then
         -- figure out chapter length
-        current_chapter_start = mp.get_property("chapter-list/" .. chapter_index .. "/time")
-        chapter_count = mp.get_property("chapter-list/count")
+        current_chapter_start = mp.get_property_number("chapter-list/" .. chapter_index .. "/time")
+        chapter_count = mp.get_property_number("chapter-list/count")
         last_chapter_index = chapter_count - 1
         if chapter_index == last_chapter_index then
             -- last chapter, since there's no next chapter, substract from total duration instead
-            file_duration = mp.get_property("duration")
+            file_duration = mp.get_property_number("duration")
             chapter_length = file_duration - current_chapter_start
         else
-            next_chapter_start = mp.get_property("chapter-list/" .. chapter_index + 1 .. "/time")
+            next_chapter_start = mp.get_property_number("chapter-list/" .. chapter_index + 1 .. "/time")
             chapter_length = next_chapter_start - current_chapter_start
         end
 
