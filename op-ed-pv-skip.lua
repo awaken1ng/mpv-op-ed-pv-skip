@@ -32,7 +32,7 @@ local function starts_with(str, start)
 end
 
 local function is_op_ed_pv(chapter_index)
-    title = mp.get_property("chapter-list/" .. chapter_index .. "/title"):lower()
+    local title = mp.get_property("chapter-list/" .. chapter_index .. "/title"):lower()
 
     for _, pattern in ipairs(PATTERNS_EXACT) do
         if pattern == title then
@@ -61,6 +61,7 @@ end
 
 local function seek_to_next_or_prev_chapter(chapter_index)
     -- figure out in which direction the chapter was changed
+    local forward, to_chapter
     if PREV_CHAPTER == nil or chapter_index > PREV_CHAPTER then
         forward = true
         to_chapter = chapter_index + 1
@@ -76,13 +77,14 @@ local function seek_to_next_or_prev_chapter(chapter_index)
         end
     end
 
-    chapters = mp.get_property_number("chapter-list/count")
-    is_seeking = mp.get_property_bool("seeking")
+    local chapters = mp.get_property_number("chapter-list/count")
+    local is_seeking = mp.get_property_bool("seeking")
 
     if not forward and is_seeking then
         -- avoid getting stuck when seeking backwards into chapter thats then immediately skipped
         -- instead, step over the skipped chapter, and seek into previous chapter
 
+        local chapter_end
         if chapter_index >= chapters - 1 then
             -- current chapter is last, use total file duration instead
             -- e.g. ../Part B/ED/Part C|, when seeking from part C over ED
@@ -92,15 +94,15 @@ local function seek_to_next_or_prev_chapter(chapter_index)
             chapter_end = mp.get_property_number("chapter-list/" .. chapter_index + 1 .. "/time")
         end
 
-        chapter_start = mp.get_property_number("chapter-list/" .. chapter_index .. "/time")
-        current_position = mp.get_property_number("playback-time")
+        local chapter_start = mp.get_property_number("chapter-list/" .. chapter_index .. "/time")
+        local current_position = mp.get_property_number("playback-time")
 
         -- how many seconds we've seeked into the skipped chapter
-        seeked_skipped = chapter_end - current_position
+        local seeked_skipped = chapter_end - current_position
 
         -- check if we skipped exactly an entire chapter
         -- floor the floats before comparing
-        chapter_length = chapter_end - chapter_start
+        local chapter_length = chapter_end - chapter_start
         if math.floor(chapter_length) == math.floor(seeked_skipped) then
             -- entire chapter was skipped, seek to the start of the previous one
             mp.set_property_number("chapter", to_chapter)
@@ -109,7 +111,7 @@ local function seek_to_next_or_prev_chapter(chapter_index)
             -- don't have to do anything for that, this is the default behaviour
         else
             -- seek into the previous chapter
-            seeked_previous = chapter_start - seeked_skipped
+            local seeked_previous = chapter_start - seeked_skipped
             mp.set_property_number("playback-time", seeked_previous)
         end
     elseif chapter_index >= chapters - 1 then
@@ -118,9 +120,9 @@ local function seek_to_next_or_prev_chapter(chapter_index)
         -- The chapter option must be <= {last chapter}: {last chapter + 1}
         mp.command("playlist-next")
     else
-        next_chapter_start = mp.get_property_number("chapter-list/" .. to_chapter + 1 .. "/time")
-        chapter_start = mp.get_property_number("chapter-list/" .. to_chapter .. "/time")
-        file_duration = mp.get_property_number("duration")
+        local next_chapter_start = mp.get_property_number("chapter-list/" .. to_chapter + 1 .. "/time")
+        local chapter_start = mp.get_property_number("chapter-list/" .. to_chapter .. "/time")
+        local file_duration = mp.get_property_number("duration")
 
         if next_chapter_start == nil and chapter_start > file_duration then
             -- if last chapter starts beyond the end of the file, playback will get stuck when switched to the next file
@@ -143,7 +145,7 @@ local function mode_cycle()
 end
 
 mp.add_key_binding(KEYBIND, "op-ed-pv-skip-toggle", function()
-    msg = "OP/ED/PV skip: "
+    local msg = "OP/ED/PV skip: "
     if ENABLED then
         ENABLED = false
         msg = msg .. "disabled"
@@ -172,9 +174,9 @@ mp.observe_property("chapters", "number", function(_, chapter_count)
     -- must run before `chapter` handler
     -- otherwise, chapter skip might not happen when opening the file (and first chapter is an OP)
 
-    named_chapters = false
+    local named_chapters = false
     for chapter_index = 0, chapter_count - 1 do -- range is inclusive, but chapters are 0-indexed
-        title = mp.get_property("chapter-list/" .. chapter_index .. "/title")
+        local title = mp.get_property("chapter-list/" .. chapter_index .. "/title")
         if not starts_with(title, "Chapter ") then
             named_chapters = true
             break
@@ -205,15 +207,16 @@ mp.observe_property("chapter", "number", function(_, chapter_index)
         end
     elseif CURRENT_MODE == MODE_CHAPTER_LENGTH then
         -- figure out chapter length
-        current_chapter_start = mp.get_property_number("chapter-list/" .. chapter_index .. "/time")
-        chapter_count = mp.get_property_number("chapter-list/count")
-        last_chapter_index = chapter_count - 1
+        local current_chapter_start = mp.get_property_number("chapter-list/" .. chapter_index .. "/time")
+        local chapter_count = mp.get_property_number("chapter-list/count")
+        local last_chapter_index = chapter_count - 1
+        local chapter_length
         if chapter_index == last_chapter_index then
             -- last chapter, since there's no next chapter, substract from total duration instead
-            file_duration = mp.get_property_number("duration")
+            local file_duration = mp.get_property_number("duration")
             chapter_length = file_duration - current_chapter_start
         else
-            next_chapter_start = mp.get_property_number("chapter-list/" .. chapter_index + 1 .. "/time")
+            local next_chapter_start = mp.get_property_number("chapter-list/" .. chapter_index + 1 .. "/time")
             chapter_length = next_chapter_start - current_chapter_start
         end
 
