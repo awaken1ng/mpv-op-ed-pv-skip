@@ -7,6 +7,7 @@ local PATTERNS_EXACT = {
     "ending credits", "credits",
     "pv", "preview", "next episode preview", "next ep. preview", "nextp ep. preview", "next", "next time",
     "endcard", " - ed card",
+    "ed+cast", "cast",
 }
 local PATTERNS_START = {
     "op by ",
@@ -14,7 +15,7 @@ local PATTERNS_START = {
 }
 local PATTERNS_END = {
     " (opening)", " - opening", " - op",
-    " (ending)", " - ed",
+    " (ending)", "- ending", " - ed",
     " preview",
 }
 -- internal configuration
