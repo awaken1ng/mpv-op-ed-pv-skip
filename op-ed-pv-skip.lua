@@ -1,5 +1,6 @@
 -- configuration
 local KEYBIND = string.lower("y") -- must be lowercase, uppercase will be used for mode cycle
+-- comparison is done in lowercase, so all paterns must be lowercase
 local PATTERNS_EXACT = {
     -- "intro" -- unfortunately ambiguous, some use it as a prologue, some as opening
     "op", "opening", " - op",
