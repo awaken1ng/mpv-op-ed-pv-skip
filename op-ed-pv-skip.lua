@@ -1,5 +1,5 @@
 -- configuration
-local KEYBIND = string.lower("y") -- must be lowercase, uppercase will be used for mode cycle
+local KEYBIND = string.lower("y") -- must be lowercase, uppercase will be used for mode cycle, ctrl+lowercase will be used for menu
 -- comparison is done in lowercase, so all paterns must be lowercase
 local PATTERNS_EXACT = {
     -- "intro" -- unfortunately ambiguous, some use it as a prologue, some as opening
@@ -23,9 +23,252 @@ local PATTERNS_END = {
 local MODE_CHAPTER_NAME   = "chapter name"
 local MODE_CHAPTER_LENGTH = "chapter length"
 -- state
-local ENABLED = true
 local PREV_CHAPTER = nil
+local MENU = false
+local ENABLED = true
 local CURRENT_MODE = MODE_CHAPTER_NAME
+local SELECTED_MENU_ROW = 2 -- 1-4
+local SELECTED_MENU_COL = 1 -- 1-3, used by thresholds
+local OP_ED_THRESHOLD = {
+    from = { selected = false, value = 88 },
+    to = { selected = false, value = 92 },
+}
+local PV_THRESHOLD = {
+    from = { selected = false, value = 14 },
+    to = { selected = false, value = 26 },
+}
+
+-- region: menu
+local function increment_from(t)
+    if t.from.value == t.to.value - 1 then
+        return
+    end
+
+    t.from.value = t.from.value + 1
+end
+
+local function decrement_from(t)
+    if t.from.value == 0 then
+        return
+    end
+
+    t.from.value = t.from.value - 1
+end
+
+local function increment_to(t)
+    t.to.value = t.to.value + 1
+end
+
+local function decrement_to(t)
+    if t.to.value == 0
+    or t.from.value == t.to.value - 1 then
+        return
+    end
+
+    t.to.value = t.to.value - 1
+end
+
+function OP_ED_THRESHOLD.from:increment() increment_from(OP_ED_THRESHOLD) end
+function OP_ED_THRESHOLD.from:decrement() decrement_from(OP_ED_THRESHOLD) end
+function OP_ED_THRESHOLD.to:increment() increment_to(OP_ED_THRESHOLD) end
+function OP_ED_THRESHOLD.to:decrement() decrement_to(OP_ED_THRESHOLD) end
+function PV_THRESHOLD.from:increment() increment_from(PV_THRESHOLD) end
+function PV_THRESHOLD.from:decrement() decrement_from(PV_THRESHOLD) end
+function PV_THRESHOLD.to:increment() increment_to(PV_THRESHOLD) end
+function PV_THRESHOLD.to:decrement() decrement_to(PV_THRESHOLD) end
+
+local function draw_menu()
+    local menu = {
+        { name = "Skip OP/ED/PV", items = {} }
+    }
+
+    if ENABLED then
+        table.insert(menu[1].items, "- Enabled: {\\b1}yes{\\b0} | {\\b0}no{\\b0}")
+    else
+        table.insert(menu[1].items, "- Enabled: {\\b0}yes{\\b0} | {\\b1}no{\\b0}")
+    end
+
+    if CURRENT_MODE == MODE_CHAPTER_NAME then
+        table.insert(menu[1].items, "- Mode: {\\b1}name{\\b0} | {\\b0}length{\\b0}")
+    elseif CURRENT_MODE == MODE_CHAPTER_LENGTH then
+        table.insert(menu[1].items, "- Mode: {\\b0}name{\\b0} | {\\b1}length{\\b0}")
+
+        local function bool_to_integer(boolean)
+            if boolean then
+                return 1
+            else
+                return 0
+            end
+        end
+
+        table.insert(menu, { name = "Length thresholds", items = {
+            string.format(
+                "- OP/ED: {\\b%i}%i{\\b0}-{\\b%i}%i{\\b0} seconds",
+                bool_to_integer(OP_ED_THRESHOLD.from.selected), OP_ED_THRESHOLD.from.value,
+                bool_to_integer(OP_ED_THRESHOLD.to.selected), OP_ED_THRESHOLD.to.value
+            ),
+            string.format(
+                "- PV: {\\b%i}%i{\\b0}-{\\b%i}%i{\\b0} seconds",
+                bool_to_integer(PV_THRESHOLD.from.selected), PV_THRESHOLD.from.value,
+                bool_to_integer(PV_THRESHOLD.to.selected), PV_THRESHOLD.to.value
+            )
+        }})
+    end
+
+    local function array_length(t)
+        local length = 0;
+
+        for _ in ipairs(t) do
+            length = length + 1
+        end
+
+        return length
+    end
+
+    local ass = ""
+    local row_offset = 0;
+    for _, section in ipairs(menu) do
+        ass = ass .. section.name .. "\\N"
+
+        for i, item in ipairs(section.items) do
+            if row_offset + i == SELECTED_MENU_ROW then
+                ass = ass .. "{\\c&H46CFFF&}" .. item .. "{\\c&HFFFFFF&}" .. "\\N"
+            else
+                ass = ass .. item .. "\\N"
+            end
+        end
+
+        row_offset = row_offset + array_length(section.items)
+    end
+
+    mp.set_osd_ass(0, 0, ass)
+end
+
+local function hide_menu()
+    MENU = false
+    mp.set_osd_ass(0, 0, "")
+    mp.remove_key_binding("op-ed-pv-skip-menu-up")
+    mp.remove_key_binding("op-ed-pv-skip-menu-down")
+    mp.remove_key_binding("op-ed-pv-skip-menu-left")
+    mp.remove_key_binding("op-ed-pv-skip-menu-right")
+    mp.remove_key_binding("op-ed-pv-skip-menu-esc")
+end
+
+mp.add_key_binding("ctrl+" .. KEYBIND, 'op-ed-pv-skip-settings', function ()
+    if not MENU then
+        MENU = true
+        draw_menu()
+
+        mp.add_forced_key_binding("UP", "op-ed-pv-skip-menu-up", function ()
+            if SELECTED_MENU_ROW <= 1 then
+                return
+            -- op/ed threshold
+            elseif SELECTED_MENU_ROW == 3 and SELECTED_MENU_COL == 2 then
+                OP_ED_THRESHOLD.from.increment()
+            elseif SELECTED_MENU_ROW == 3 and SELECTED_MENU_COL == 3 then
+                OP_ED_THRESHOLD.to.increment()
+            -- pv threshold
+            elseif SELECTED_MENU_ROW == 4 and SELECTED_MENU_COL == 2 then
+                PV_THRESHOLD.from.increment()
+            elseif SELECTED_MENU_ROW == 4 and SELECTED_MENU_COL == 3 then
+                PV_THRESHOLD.to.increment()
+            else
+                SELECTED_MENU_ROW = SELECTED_MENU_ROW - 1
+            end
+
+            draw_menu()
+        end, {repeatable=true})
+
+        mp.add_forced_key_binding("DOWN", "op-ed-pv-skip-menu-down", function ()
+            if CURRENT_MODE == MODE_CHAPTER_NAME and SELECTED_MENU_ROW >= 2 then
+                return
+            -- op/ed threshold
+            elseif SELECTED_MENU_ROW == 3 and SELECTED_MENU_COL == 2 then
+                OP_ED_THRESHOLD.from.decrement()
+            elseif SELECTED_MENU_ROW == 3 and SELECTED_MENU_COL == 3 then
+                OP_ED_THRESHOLD.to.decrement()
+            -- pv threshold
+            elseif SELECTED_MENU_ROW == 4 and SELECTED_MENU_COL == 2 then
+                PV_THRESHOLD.from.decrement()
+            elseif SELECTED_MENU_ROW == 4 and SELECTED_MENU_COL == 3 then
+                PV_THRESHOLD.to.decrement()
+            elseif SELECTED_MENU_ROW >= 4 then
+                return
+            else
+                SELECTED_MENU_ROW = SELECTED_MENU_ROW + 1
+            end
+
+            draw_menu()
+        end, {repeatable=true})
+
+        mp.add_forced_key_binding("LEFT", "op-ed-pv-skip-menu-left", function ()
+            -- enabled
+            if SELECTED_MENU_ROW == 1 then
+                ENABLED = true
+            -- mode
+            elseif SELECTED_MENU_ROW == 2 then
+                CURRENT_MODE = MODE_CHAPTER_NAME
+            -- op/ed threshold
+            elseif SELECTED_MENU_ROW == 3 and SELECTED_MENU_COL == 2 then
+                OP_ED_THRESHOLD.from.selected = false
+                SELECTED_MENU_COL = 1
+            elseif SELECTED_MENU_ROW == 3 and SELECTED_MENU_COL == 3 then
+                OP_ED_THRESHOLD.from.selected = true
+                OP_ED_THRESHOLD.to.selected = false
+                SELECTED_MENU_COL = 2;
+            -- pv threshold
+            elseif SELECTED_MENU_ROW == 4 and SELECTED_MENU_COL == 2 then
+                PV_THRESHOLD.from.selected = false
+                SELECTED_MENU_COL = 1
+            elseif SELECTED_MENU_ROW == 4 and SELECTED_MENU_COL == 3 then
+                PV_THRESHOLD.from.selected = true
+                PV_THRESHOLD.to.selected = false
+                SELECTED_MENU_COL = 2;
+            else
+                return
+            end
+
+            draw_menu()
+        end)
+
+        mp.add_forced_key_binding("RIGHT", "op-ed-pv-skip-menu-right", function ()
+            -- enabled
+            if SELECTED_MENU_ROW == 1 then
+                ENABLED = false
+            -- mode
+            elseif SELECTED_MENU_ROW == 2 then
+                CURRENT_MODE = MODE_CHAPTER_LENGTH
+            -- op/ed threshold
+            elseif SELECTED_MENU_ROW == 3 and SELECTED_MENU_COL == 1 then
+                OP_ED_THRESHOLD.from.selected = true
+                SELECTED_MENU_COL = 2
+            elseif SELECTED_MENU_ROW == 3 and SELECTED_MENU_COL == 2 then
+                OP_ED_THRESHOLD.from.selected = false
+                OP_ED_THRESHOLD.to.selected = true
+                SELECTED_MENU_COL = 3;
+            -- pv threshold
+            elseif SELECTED_MENU_ROW == 4 and SELECTED_MENU_COL == 1 then
+                PV_THRESHOLD.from.selected = true
+                SELECTED_MENU_COL = 2
+            elseif SELECTED_MENU_ROW == 4 and SELECTED_MENU_COL == 2 then
+                PV_THRESHOLD.from.selected = false
+                PV_THRESHOLD.to.selected = true
+                SELECTED_MENU_COL = 3;
+            else
+                return
+            end
+
+            draw_menu()
+        end)
+
+        mp.add_forced_key_binding("ESC", "op-ed-pv-skip-menu-esc", function ()
+            hide_menu()
+        end)
+    else
+        hide_menu()
+    end
+end)
+-- endregion: menu
 
 local function starts_with(str, start)
     return str:sub(1, #start) == start
@@ -140,8 +383,6 @@ local function mode_cycle()
     elseif CURRENT_MODE == MODE_CHAPTER_LENGTH then
         CURRENT_MODE = MODE_CHAPTER_NAME
     end
-
-    mp.osd_message("OP/ED/PV skip: " .. CURRENT_MODE)
 end
 
 mp.add_key_binding(KEYBIND, "op-ed-pv-skip-toggle", function()
@@ -154,7 +395,12 @@ mp.add_key_binding(KEYBIND, "op-ed-pv-skip-toggle", function()
         msg = msg .. "enabled"
     end
 
-    mp.osd_message(msg)
+    if MENU then
+        -- redraw to update `Enabled` value
+        draw_menu()
+    else
+        mp.osd_message(msg)
+    end
 end)
 
 mp.add_key_binding(string.upper(KEYBIND), "op-ed-pv-skip-mode-cycle", function ()
@@ -163,6 +409,13 @@ mp.add_key_binding(string.upper(KEYBIND), "op-ed-pv-skip-mode-cycle", function (
     end
 
     mode_cycle()
+
+    if MENU then
+        -- redraw to update `Mode` value
+        draw_menu()
+    else
+        mp.osd_message("OP/ED/PV skip: " .. CURRENT_MODE)
+    end
 end)
 
 mp.observe_property("chapters", "number", function(_, chapter_count)
@@ -189,6 +442,7 @@ mp.observe_property("chapters", "number", function(_, chapter_count)
         -- `mp.commandv("keypress", string.upper(KEYBIND))` could have been used here,
         -- but the mode cycle seem to happen after `chapter` handler, so skip doesn't happen when opening the file
         mode_cycle()
+        mp.osd_message("OP/ED/PV skip: " .. CURRENT_MODE)
     end
 end)
 
@@ -227,13 +481,15 @@ mp.observe_property("chapter", "number", function(_, chapter_index)
         or chapter_index == last_chapter_index      -- ../ED|
         or chapter_index == last_chapter_index - 1  -- ../ED/PV|
         or chapter_index == last_chapter_index - 2) -- ../ED/PV/Endcard|
-        and chapter_length >= 89 and chapter_length <= 91
+        and chapter_length >= OP_ED_THRESHOLD.from.value
+        and chapter_length <= OP_ED_THRESHOLD.to.value
         then
             seek_to_next_or_prev_chapter(chapter_index)
         end
 
         if chapter_index == last_chapter_index -- ../Preview|
-        and chapter_length >= 14 and chapter_length <= 26
+        and chapter_length >= PV_THRESHOLD.from.value
+        and chapter_length <= PV_THRESHOLD.to.value
         then
             seek_to_next_or_prev_chapter(chapter_index)
         end
